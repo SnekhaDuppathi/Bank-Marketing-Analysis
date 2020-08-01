@@ -1,0 +1,499 @@
+---
+title: "Bank Marketing Dataset Analysis"
+author: "Snekha Duppathi"
+date: "07/28/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r package}
+if(!require("pacman")) install.packages("pacman") 
+pacman::p_load(forecast, tidyverse, gplots, GGally, mosaic, scales, mosaic, mapproj, mlbench, 
+               data.table, leaps,ggcorrplot,gains,DataExplorer,rpart.plot,easyGgplot2,shiny,
+               corrplot,rpivotTable,MASS,knitr,plyr,caret,funModeling,dplyr,cowplot,here,
+               ggplot2,DMwR,randomForest,pROC,e1071,gridExtra,ggpubr,rpart)
+library(tinytex) 
+theme_set(theme_classic())
+
+```
+
+```{r Read data}
+getwd()
+bank = read.csv("Data.csv")
+str(bank)
+
+#Basic Analysis
+plot_missing(bank)
+plot_density(bank)
+plot_correlation(bank,type='c')
+plot_correlation(bank,type='d')
+table(bank$y)
+
+```
+
+```{r EDA Analysis}
+
+#Age
+summary(bank$age)
+agetab = table(bank$y,bank$age)
+barplot(agetab, xlab='Age',ylab='Frequency',main="Age vs Deposit",
+col=c("darkblue","lightcyan"),legend=rownames(agetab), args.legend = list(title='Deposit'))
+bank %>%ggplot() + aes(x = bank$age) +geom_bar() +facet_grid(bank$y ~ .,scales = "free_y") 
+#converting to 3 factors
+bank = bank %>% mutate(age = if_else(age > 60, "high", if_else(age > 30, "mid", "low"))) 
+bank$age = as.factor(bank$age)
+agetable = table(bank$age,bank$y)
+agetable=as.data.frame(prop.table(agetable,2))
+colnames(agetable) = c('Age','y','Percent')
+agetable
+s1=ggplot(data = agetable)+ aes(x = Age, y = Percent, fill = y) + ggtitle('Age distribution')+
+geom_bar(stat = 'identity', position = 'dodge', alpha = 2/3) + xlab("Age")+ ylab("Percent")
+
+#Job
+jobtable = table(bank$job,bank$y)
+jobtable=as.data.frame(prop.table(jobtable,2))
+colnames(jobtable) = c('Job','y','Percent')
+s2=ggplot(data = jobtable)+ aes(x = Job, y = Percent, fill = y) +  ggtitle('Job distribution')+
+geom_bar(stat = 'identity', position = 'dodge', alpha = 2/3) + xlab("Job")+ ylab("Percent")+
+   theme(axis.text.x = element_text(angle = 90))
+
+#Marital status
+maritaltable = table(bank$marital,bank$y)
+maritaltable=as.data.frame(prop.table(maritaltable,2))
+colnames(maritaltable) = c('Marital','y','Percent')
+s3 = ggplot(data = maritaltable)+ aes(x = Marital, y = Percent, fill = y) + ggtitle('Marital status distribution') + geom_bar(stat = 'identity', position = 'dodge', alpha = 2/3) + xlab("Marital")+ ylab("Percent")
+
+#Education
+edutable = table(bank$education,bank$y)
+edutable=as.data.frame(prop.table(edutable,2))
+colnames(edutable) = c('Education','y','Percent')
+s4 = ggplot(data = edutable)+ aes(x = Education, y = Percent, fill = y) + ggtitle('Education distribution')+
+geom_bar(stat = 'identity', position = 'dodge', alpha = 2/3) + xlab("Education")+ ylab("Percent")
+
+plot_grid(s1,s2,s3,s4)
+
+#Credit default
+deftable = table(bank$default,bank$y)
+deftable=as.data.frame(prop.table(deftable,2))
+deftable
+colnames(deftable) = c('Default','y','Percent')
+s5=ggplot(data = deftable)+ aes(x = Default, y = Percent, fill = y) + ggtitle('Credit default')+
+geom_bar(stat = 'identity', position = 'dodge', alpha = 2/3) + xlab("Default")+ ylab("Percent")
+
+#Account Yearly balance
+summary(bank$balance)
+bank %>%ggplot()+aes(balance) +geom_histogram(bins=100)+facet_grid(bank$y ~ .,scales = "free_y")
+#with outliers
+s6=ggplot(bank, aes(x=y, y=balance)) + geom_boxplot(fill='#A4A4A4', color="black")+ theme_classic()+
+  ggtitle('Account yearly balance')
+#removing outliers
+s7=ggplot(bank, aes(x=y, y=balance)) + geom_boxplot(fill='#A4A4A4', color="black",outlier.shape =NA)+ theme_classic() + coord_cartesian(ylim = quantile(bank$balance, c(0.1, 0.9))) + 
+  ggtitle('Account yearly balance(removing outliers)')
+
+plot_grid(s5,s6,s7)
+
+#Housing,loan and contact
+houstable = table(bank$y,bank$housing,dnn= c('Deposit','Housing'))
+loantable= table(bank$y,bank$loan,dnn= c('Deposit','Loan'))
+contable = table(bank$y,bank$contact,dnn= c('Deposit','Contact'))
+houstable
+c1 = barplot(houstable, xlab='Housing',ylab='Frequency',main="Housing vs Deposit",
+col=c("darkblue","lightcyan"),legend=rownames(houstable), args.legend = list(title='Deposit'))
+loantable
+c2 =  barplot(loantable, xlab='Loan',ylab='Frequency',main="Loan vs Deposit",
+col=c("darkblue","lightcyan"),legend=rownames(loantable), args.legend = list(title='Deposit')) 
+contable
+c3 =  barplot(contable, xlab='Contact',ylab='Frequency',main="Contact vs Deposit",
+col=c("darkblue","lightcyan"),legend=rownames(contable), args.legend = list(title='Deposit'))
+
+#Day and month
+tempday = as.factor(bank$day)
+daytable = table(bank$y,tempday,dnn= c('Deposit','Day'))
+monthtable= table(bank$y,bank$month,dnn= c('Deposit','month'))
+daytable
+t1 = barplot(daytable, xlab='Day',ylab='Frequency',main="Day vs Deposit",
+col=c("darkblue","lightcyan"),legend=rownames(daytable), args.legend = list(title='Deposit'))
+monthtable
+t2 = barplot(monthtable, xlab='Month',ylab='Frequency',main="Month vs Deposit",
+col=c("darkblue","lightcyan"),legend=rownames(monthtable), args.legend = list(title='Deposit'))
+
+#Duration and Campaign
+dur =  ggdensity(bank, x = "duration", fill = "y", palette = "jco")
+dur
+summary(bank$campaign)
+camtable = table(bank$y,bank$campaign,dnn= c('Deposit','Campaign'))
+camtable
+cam = barplot(camtable, xlab='Campaign',ylab='Frequency',main="Campaign vs Deposit",
+col=c("darkblue","lightcyan"),legend=rownames(camtable), args.legend = list(title='Deposit'))
+
+#pdays, previous and poutcome
+prtable = table(bank$y,bank$previous,dnn= c('Deposit','Previous'))
+prtable
+p1 = barplot(prtable, xlab='Previous',ylab='Frequency',main="Previous vs Deposit",
+col=c("pink","lightcyan"),legend=rownames(prtable), args.legend = list(title='Deposit'))
+#with outliers
+s8 = ggplot(bank, aes(x=y, y=pdays)) + geom_boxplot(fill='#A4A4A4', color="black")+ theme_classic()+
+  ggtitle('Pdays vs Deposit')
+#removing outliers
+s9 = ggplot(bank, aes(x=y, y=pdays)) + geom_boxplot(fill='#A4A4A4', color="black",outlier.shape =NA)+ 
+  theme_classic() + coord_cartesian(ylim = quantile(bank$pdays, c(0.1, 0.9))) + 
+  ggtitle('Pdays vs Deposit(removing outliers)')
+summary(bank$pdays)
+s10 = ggplot(bank, aes(x=pdays, color=y)) + geom_histogram(fill="white",binwidth =10 )+ggtitle('Pdays vs Deposit')
+
+plot_grid(s8,s9,s10)
+
+potable = table(bank$y,bank$poutcome,dnn= c('Deposit','Poutcome'))
+potable
+p3 = barplot(potable, xlab='Poutcome',ylab='Frequency',main="Poutcome vs Deposit",
+col=c("pink","lightcyan"),legend=rownames(potable), args.legend = list(title='Deposit'))
+
+#Deposit
+deptable = table(bank$y)
+deptable = as.data.frame(prop.table(deptable))
+str(deptable)
+colnames(deptable) = c('Deposit','Percent')
+deptable$Percent = round(deptable$Percent,digits = 3)
+deptable = deptable %>% arrange(desc(Deposit)) %>%
+        mutate(lab.ypos = cumsum(Percent) - 0.5*Percent)
+ggplot(deptable, aes(x="", y=Percent, fill=Deposit)) + geom_bar(width = 1, stat = "identity",
+      color = "white") +  coord_polar("y", start=0) + geom_text(aes(y=lab.ypos,label = Percent),
+      color = "white") + scale_fill_manual(values = c("#0073C2FF", "#EFC000FF")) + theme_void() +
+      labs(title = "Deposit(y)")
+```
+
+```{r Data Partition}
+
+set.seed(42)
+#Removing duration variable for building effective model
+bank$duration = NULL
+bank.index = createDataPartition(bank$y,p=0.8,list=FALSE) 
+train = bank[bank.index, ]
+test = bank[-bank.index,]
+
+preproc = preProcess(train,method=c("center","scale"))
+training.df=predict(preproc,train)
+test.df=predict(preproc,test)
+```
+
+```{r Resampling}
+down_training <- downSample(x = training.df[, -ncol(training.df)], y = training.df$y)
+barplot(table(down_training$Class),xlab='Deposit',ylab='Frequency',main="Downsampled data - Deposit",
+col=c("pink","lightcyan"))
+up_training <- upSample(x = training.df[, -ncol(training.df)], y = training.df$y)
+barplot(table(up_training$Class),xlab='Deposit',ylab='Frequency',main="upsampled data - Deposit",
+col=c("pink","lightcyan"))
+smote_training <- SMOTE(y~.,training.df,perc.over = 400,perc.under = 50)
+barplot(table(smote_training$y),xlab='Deposit',ylab='Frequency',main="SMOTEsampled data -Deposit",
+col=c("pink","lightcyan"))
+
+```
+
+```{r Logistic regression}
+
+accuracy = c()
+model = c()
+Precision = c()
+Sensitivity = c()
+Specificity = c()
+F1score = c()
+AIC = c()
+bank.glm = glm(y ~ ., data = training.df,family="binomial") 
+options(scipen=999)
+
+#prediction
+pred.glm= predict(bank.glm,test.df,type='response')
+prediction.glm<-ifelse(pred.glm>=0.5,'yes','no')
+conf_mat.glm=confusionMatrix(as.factor(prediction.glm),test.df$y,positive ="yes")
+accuracy=append(accuracy,conf_mat.glm$overall[1])
+Precision=append(Precision,conf_mat.glm$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.glm$byClass[1])
+Specificity =append(Specificity,conf_mat.glm$byClass[2])
+F1score = append(F1score,conf_mat.glm$byClass[7])
+AIC = append(AIC,bank.glm$aic)
+model=append(model,"logistic_regression - Raw data")
+
+#down-sampling
+bank.glm.ds = glm(Class ~ ., data = down_training,family="binomial") 
+options(scipen=999)
+
+#prediction
+pred.glm.ds= predict(bank.glm.ds,test.df,type='response')
+prediction.glm.ds<-ifelse(pred.glm.ds>=0.4,"yes","no")
+conf_mat.glm.ds=confusionMatrix(as.factor(prediction.glm.ds),test.df$y,positive ="yes")
+conf_mat.glm.ds
+accuracy=append(accuracy,conf_mat.glm.ds$overall[1])
+Precision=append(Precision,conf_mat.glm.ds$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.glm.ds$byClass[1])
+Specificity =append(Specificity,conf_mat.glm.ds$byClass[2])
+F1score = append(F1score,conf_mat.glm.ds$byClass[7])
+AIC = append(AIC,bank.glm.ds$aic)
+model=append(model,"logistic_regression - Downsampled data")
+
+#Up-sampling
+bank.glm.up = glm(Class ~ ., data = up_training,family="binomial") 
+options(scipen=999)
+
+#prediction
+pred.glm.up= predict(bank.glm.up,test.df,type='response')
+prediction.glm.up<-ifelse(pred.glm.up>=0.4,"yes","no")
+conf_mat.glm.up=confusionMatrix(as.factor(prediction.glm.up),test.df$y,positive ="yes")
+conf_mat.glm.up
+accuracy=append(accuracy,conf_mat.glm.up$overall[1])
+Precision=append(Precision,conf_mat.glm.up$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.glm.up$byClass[1])
+Specificity =append(Specificity,conf_mat.glm.up$byClass[2])
+F1score = append(F1score,conf_mat.glm.up$byClass[7])
+AIC = append(AIC,bank.glm.up$aic)
+model=append(model,"logistic_regression - Upsampled data")
+
+#Smote-sampling
+bank.glm.sm = glm(y ~ ., data = smote_training,family="binomial") 
+options(scipen=999)
+
+#prediction
+pred.glm.sm= predict(bank.glm.sm,test.df,type='response')
+prediction.glm.sm<-ifelse(pred.glm.sm>=0.4,"yes","no")
+conf_mat.glm.sm=confusionMatrix(as.factor(prediction.glm.sm),test.df$y,positive ="yes")
+conf_mat.glm.sm
+accuracy=append(accuracy,conf_mat.glm.sm$overall[1])
+Precision=append(Precision,conf_mat.glm.sm$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.glm.sm$byClass[1])
+Specificity =append(Specificity,conf_mat.glm.sm$byClass[2])
+F1score = append(F1score,conf_mat.glm.sm$byClass[7])
+AIC = append(AIC,bank.glm.sm$aic)
+model=append(model,"logistic_regression - SMOTE sampled data")
+
+Accuracy_table = data.frame(model,accuracy,Precision,Sensitivity,Specificity,F1score,AIC)
+Accuracy_table
+
+```
+
+```{r randomforest}
+set.seed(42)
+bank.rf = randomForest(y~ ., data =training.df,importance=TRUE) 
+bank.rf
+options(scipen=999)
+
+#prediction
+pred.rf= predict(bank.rf,test.df)
+prediction.rf<-ifelse(pred.rf=="yes",1,0)
+conf_mat.rf=confusionMatrix(pred.rf,test.df$y,positive = 'yes')
+conf_mat.rf
+accuracy=append(accuracy,conf_mat.rf$overall[1])
+Precision=append(Precision,conf_mat.rf$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.rf$byClass[1])
+Specificity =append(Specificity,conf_mat.rf$byClass[2])
+F1score = append(F1score,conf_mat.rf$byClass[7])
+AIC = append(AIC,bank.rf$aic)
+model=append(model,"Random_Forest - Raw data")
+
+#downsampling
+bank.rf.ds = randomForest(Class~ ., data =down_training,importance=TRUE) 
+bank.rf.ds
+options(scipen=999)
+
+#prediction
+pred.rf.ds= predict(bank.rf.ds,test.df)
+prediction.rf.ds<-ifelse(pred.rf.ds=="yes",1,0)
+conf_mat.rf.ds=confusionMatrix(pred.rf.ds,test.df$y,positive = 'yes')
+conf_mat.rf.ds
+accuracy=append(accuracy,conf_mat.rf.ds$overall[1])
+Precision=append(Precision,conf_mat.rf.ds$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.rf.ds$byClass[1])
+Specificity =append(Specificity,conf_mat.rf.ds$byClass[2])
+F1score = append(F1score,conf_mat.rf.ds$byClass[7])
+AIC = append(AIC,bank.rf.ds$aic)
+model=append(model,"Random_Forest - Downsampled data")
+
+
+#upsampling
+bank.rf.up = randomForest(Class~ ., data =up_training,importance=TRUE) 
+bank.rf.up
+options(scipen=999)
+
+#prediction
+pred.rf.up= predict(bank.rf.up,test.df)
+prediction.rf.up<-ifelse(pred.rf.up=="yes",1,0)
+conf_mat.rf.up=confusionMatrix(pred.rf.up,test.df$y,positive = 'yes')
+conf_mat.rf.up
+accuracy=append(accuracy,conf_mat.rf.up$overall[1])
+Precision=append(Precision,conf_mat.rf.up$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.rf.up$byClass[1])
+Specificity =append(Specificity,conf_mat.rf.up$byClass[2])
+F1score = append(F1score,conf_mat.rf.up$byClass[7])
+AIC = append(AIC,bank.rf.up$aic)
+model=append(model,"Random_Forest - Upsampled data")
+
+#SMOTE sampling
+bank.rf.sm = randomForest(y~ ., data =smote_training,importance=TRUE) 
+bank.rf.sm
+options(scipen=999)
+
+#prediction
+pred.rf.sm= predict(bank.rf.sm,test.df)
+prediction.rf.sm<-ifelse(pred.rf.sm == "yes",1,0)
+conf_mat.rf.sm=confusionMatrix(pred.rf.sm,test.df$y,positive = 'yes')
+conf_mat.rf.sm
+accuracy=append(accuracy,conf_mat.rf.sm$overall[1])
+Precision=append(Precision,conf_mat.rf.sm$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.rf.sm$byClass[1])
+Specificity =append(Specificity,conf_mat.rf.sm$byClass[2])
+F1score = append(F1score,conf_mat.rf.sm$byClass[7])
+AIC = append(AIC,bank.rf.sm$aic)
+model=append(model,"Random_Forest - SMOTEsampled data")
+
+
+Accuracy_table = data.frame(model,accuracy,Precision,Sensitivity,Specificity,F1score,AIC)
+Accuracy_table
+```
+
+```{r SVM}
+set.seed(42)
+bank.svm <- svm(y~., data=training.df)
+summary(bank.svm)
+pred.svm <- predict(bank.svm, test.df)
+conf_mat.svm = confusionMatrix(pred.svm, test.df$y,positive = "yes")
+accuracy=append(accuracy,conf_mat.svm$overall[1])
+Precision=append(Precision,conf_mat.svm$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.svm$byClass[1])
+Specificity =append(Specificity,conf_mat.svm$byClass[2])
+F1score = append(F1score,conf_mat.svm$byClass[7])
+AIC = append(AIC,conf_mat.svm$aic)
+model=append(model,"SVM - Raw data")
+
+bank.svm.ds <- svm(Class~., data=down_training)
+summary(bank.svm.ds)
+pred.svm.ds <- predict(bank.svm.ds, test.df)
+conf_mat.svm.ds=confusionMatrix(pred.svm.ds, test.df$y,positive = "yes")
+accuracy=append(accuracy,conf_mat.svm.ds$overall[1])
+Precision=append(Precision,conf_mat.svm.ds$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.svm.ds$byClass[1])
+Specificity =append(Specificity,conf_mat.svm.ds$byClass[2])
+F1score = append(F1score,conf_mat.svm.ds$byClass[7])
+AIC = append(AIC,conf_mat.svm.ds$aic)
+model=append(model,"SVM - Downsampled data")
+
+bank.svm.up <- svm(Class~., data=up_training)
+summary(bank.svm.up)
+pred.svm.up <- predict(bank.svm.up, test.df)
+conf_mat.svm.up = confusionMatrix(pred.svm.up, test.df$y,positive = "yes")
+accuracy=append(accuracy,conf_mat.svm.up$overall[1])
+Precision=append(Precision,conf_mat.svm.up$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.svm.up$byClass[1])
+Specificity =append(Specificity,conf_mat.svm.up$byClass[2])
+F1score = append(F1score,conf_mat.svm.up$byClass[7])
+AIC = append(AIC,conf_mat.svm.up$aic)
+model=append(model,"SVM - Upsampled data")
+
+bank.svm.sm <- svm(y~., data=smote_training)
+summary(bank.svm.sm)
+pred.svm.sm <- predict(bank.svm.sm, test.df)
+conf_mat.svm.sm = confusionMatrix(pred.svm.sm, test.df$y,positive = "yes")
+accuracy=append(accuracy,conf_mat.svm.sm$overall[1])
+Precision=append(Precision,conf_mat.svm.sm$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.svm.sm$byClass[1])
+Specificity =append(Specificity,conf_mat.svm.sm$byClass[2])
+F1score = append(F1score,conf_mat.svm.sm$byClass[7])
+AIC = append(AIC,conf_mat.svm.sm$aic)
+model=append(model,"SVM - SMOTEsampled data")
+
+Accuracy_table = data.frame(model,accuracy,Precision,Sensitivity,Specificity,F1score,AIC)
+Accuracy_table
+```
+
+```{r Classification tree}
+set.seed(42)
+ct <- rpart(y ~ ., data = training.df, method = "class")
+length(ct$frame$var[ct$frame$var == "<leaf>"])  # count number of leaves
+pred.ct <- predict(ct, newdata = test.df, type = "class")
+conf_mat.ct = confusionMatrix(pred.ct, test.df$y,positive = "yes")
+accuracy=append(accuracy,conf_mat.ct$overall[1])
+Precision=append(Precision,conf_mat.ct$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.ct$byClass[1])
+Specificity =append(Specificity,conf_mat.ct$byClass[2])
+F1score = append(F1score,conf_mat.ct$byClass[7])
+AIC = append(AIC,conf_mat.ct$aic)
+model=append(model,"Classification tree - Raw data")
+
+ct.ds <- rpart(Class ~ ., data = down_training, method = "class")
+length(ct.ds$frame$var[ct.ds$frame$var == "<leaf>"])  # count number of leaves
+pred.ct.ds <- predict(ct.ds, newdata = test.df, type = "class")
+conf_mat.ct.ds = confusionMatrix(pred.ct.ds, test.df$y,positive = "yes")
+accuracy=append(accuracy,conf_mat.ct$overall[1])
+Precision=append(Precision,conf_mat.ct.ds$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.ct.ds$byClass[1])
+Specificity =append(Specificity,conf_mat.ct.ds$byClass[2])
+F1score = append(F1score,conf_mat.ct.ds$byClass[7])
+AIC = append(AIC,conf_mat.ct.ds$aic)
+model=append(model,"Classification tree - Downsampled data")
+
+ct.up <- rpart(Class ~ ., data = up_training, method = "class")
+length(ct.up$frame$var[ct.up$frame$var == "<leaf>"])  # count number of leaves
+pred.ct.up <- predict(ct.up, newdata = test.df, type = "class")
+conf_mat.ct.up = confusionMatrix(pred.ct.up, test.df$y,positive = "yes")
+accuracy=append(accuracy,conf_mat.ct.up$overall[1])
+Precision=append(Precision,conf_mat.ct.up$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.ct.up$byClass[1])
+Specificity =append(Specificity,conf_mat.ct.up$byClass[2])
+F1score = append(F1score,conf_mat.ct.up$byClass[7])
+AIC = append(AIC,conf_mat.ct.up$aic)
+model=append(model,"Classification tree - Upsampled data")
+
+ct.sm <- rpart(y ~ ., data = smote_training, method = "class")
+length(ct.sm$frame$var[ct.sm$frame$var == "<leaf>"])  # count number of leaves
+pred.ct.sm <- predict(ct.sm, newdata = test.df, type = "class")
+conf_mat.ct.sm = confusionMatrix(pred.ct.sm, test.df$y,positive = "yes")
+accuracy=append(accuracy,conf_mat.ct.sm$overall[1])
+Precision=append(Precision,conf_mat.ct.sm$byClass[3])
+Sensitivity =append(Sensitivity,conf_mat.ct.sm$byClass[1])
+Specificity =append(Specificity,conf_mat.ct.sm$byClass[2])
+F1score = append(F1score,conf_mat.ct.sm$byClass[7])
+AIC = append(AIC,conf_mat.ct.sm$aic)
+model=append(model,"Classification tree - SMOTE sampled data")
+
+Accuracy_table = data.frame(model,accuracy,Precision,Sensitivity,Specificity,F1score,AIC)
+Accuracy_table 
+
+ggplot(data = Accuracy_table)+ aes(x = reorder(model,-Sensitivity) , y = Sensitivity) + 
+geom_bar(stat = 'identity', position = 'dodge',fill = c("#FF9999")) + xlab("Model")+ ylab("Sensitivity")+ theme(axis.text.x = element_text(angle = 90))+ggtitle("Models vs Sensitivity") 
+
+```
+
+```{r shiny}
+#Data for shiny
+shdata= Accuracy_table
+
+#Defining ui
+ui = fluidPage(
+  # App title ----
+  titlePanel("Bank marketing dataset"),
+  mainPanel(
+    sidebarPanel(
+          selectInput(inputId ='in1', label ='Select number of top models',
+                      choices = c(1:16)),width =6),
+          selectInput(inputId ='in2', label ='Select the measure',
+                      choices = c("accuracy","Precision","Sensitivity","Specificity","F1score","AIC")),
+          plotOutput(outputId="plot")
+  ))
+
+server <- function(input,output){
+  
+  output$plot = renderPlot({
+    
+    out = shdata %>% dplyr::select(model,input$in2)
+    sor = out[order(-out[,2]),]
+    num = c(1:16)
+    out1 = cbind(sor,num)
+    out2 =  out1 %>% filter(out1$num %in% c(1:input$in1))
+    colnames(out2) = c('Models','measure','rank')
+    ggplot(data = out2)+ aes(x = reorder(Models,-measure) , y = measure) + 
+geom_bar(stat = 'identity', position = 'dodge') + xlab("Model")+ ylab(input$in2)+
+  theme(axis.text.x = element_text(angle = 90))+ggtitle("Model's performance")
+  } )
+}
+
+shinyApp(ui = ui, server = server)
+    
+```
